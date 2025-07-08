@@ -35,28 +35,39 @@ def recommend(userId: str):
     logs = pd.read_csv("logs.csv")
     products = pd.read_csv("products.csv")
 
+    # Get current user's b2bUnit
+    user_row = logs[logs["userId"] == userId]
+    if user_row.empty:
+        return {"error": "User not found"}
+
+    user_unit = user_row["b2bUnit"].iloc[0]
+
+    # Filter logs to that unit
+    unit_logs = logs[logs["b2bUnit"] == user_unit]
+
+    # Use only required columns
     reader = Reader(rating_scale=(0, 1))
-    data = Dataset.load_from_df(logs, reader)
+    data = Dataset.load_from_df(unit_logs[["userId", "productId", "rating"]], reader)
     trainset = data.build_full_trainset()
+
+    # Fit model
     algo = KNNBasic(sim_options={"user_based": True})
     algo.fit(trainset)
 
+    # Build testset of unseen items
+    seen_items = set(logs[logs["userId"] == userId]["productId"].values)
     all_items = trainset.all_items()
-    raw_items = [trainset.to_raw_iid(i) for i in all_items]
-    seen = set(logs[logs["userId"] == userId]["productId"].values)
-    testset = [(userId, iid, 0) for iid in raw_items if iid not in seen]
+    raw_items = [trainset.to_raw_iid(i) for i in all_items if trainset.to_raw_iid(i) not in seen_items]
+    testset = [(userId, iid, 0) for iid in raw_items]
 
+    # Predict and sort
     predictions = algo.test(testset)
-    top_n = defaultdict(list)
-    for uid, iid, _, est, _ in predictions:
-        top_n[uid].append((iid, est))
-    top_n[userId].sort(key=lambda x: x[1], reverse=True)
+    top_n = sorted(predictions, key=lambda x: x.est, reverse=True)
+    recommended_ids = [pred.iid for pred in top_n[:5]]
 
-    rec_ids = [iid for iid, _ in top_n[userId][:3]]
-    return {
-        "userId": userId,
-        "recommendations": products[products["productId"].isin(rec_ids)][["productId", "name"]].to_dict(orient="records")
-    }
+    # Join with product data
+    recommendations = products[products["productId"].isin([int(i) for i in recommended_ids])]
+    return recommendations[["productId", "name", "category"]].to_dict(orient="records")
 
 @app.get("/")
 def home():
