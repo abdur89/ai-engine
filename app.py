@@ -12,23 +12,40 @@ class LogEvent(BaseModel):
     event: str
     productId: str
     timestamp: str
+    b2bUnit: str
 
 @app.post("/logEvent")
 def log_event(event: LogEvent):
-    df = pd.read_csv("logs.csv")
-    df = df._append({"userId": event.userId, "productId": event.productId, "rating": 1}, ignore_index=True)
+    import pandas as pd
+
+    # Load existing logs or create empty DataFrame if missing
+    try:
+        df = pd.read_csv("logs.csv")
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=["userId", "productId", "rating", "b2bUnit"])
+
+    # Append new entry with a fixed rating (implicit binary rating = 1)
+    df = df._append({
+        "userId": event.userId,
+        "productId": event.productId,
+        "rating": 1,
+        "b2bUnit": event.b2bUnit
+    }, ignore_index=True)
+
+    # Save logs
     df.to_csv("logs.csv", index=False)
 
-    product_df = pd.read_csv("products.csv")
-    if event.productId not in product_df["productId"].values:
-        product_df = product_df._append({
+    # Update products.csv if productId not already there
+    products = pd.read_csv("products.csv")
+    if str(event.productId) not in products["productId"].astype(str).values:
+        products = products._append({
             "productId": event.productId,
             "name": "Unknown",
             "category": "Unknown"
         }, ignore_index=True)
-        product_df.to_csv("products.csv", index=False)
+        products.to_csv("products.csv", index=False)
 
-    return {"status": "logged"}
+    return {"status": "event logged"}
 
 @app.get("/recommendations")
 def recommend(userId: str):
