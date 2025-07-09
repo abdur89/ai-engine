@@ -4,8 +4,19 @@ from pydantic import BaseModel
 import pandas as pd
 from surprise import Dataset, Reader, KNNBasic
 from collections import defaultdict
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# 👇 Add this after app init
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://graybarpo.local:80"],  # 👈 your Spartacus frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class LogEvent(BaseModel):
     userId: str
